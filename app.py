@@ -12,7 +12,7 @@ import edge_tts
 from pydub import AudioSegment
 import torch
 
-# 1. Page Configuration & Black/White Futuristic Theme
+# 1. Page Configuration & Theme
 st.set_page_config(page_title="Universal Studio AI", layout="centered")
 
 st.markdown("""
@@ -59,8 +59,10 @@ def cleanup_workspace():
             except Exception:
                 pass
 
-# 2. Universal Downloader with YouTube Bot-Bypass & Live % Tracking
+# 2. 100% Bulletproof YouTube Stream Downloader
 def download_with_progress(url, progress_bar, status_text):
+    out_file = os.path.join(TEMP_DIR, 'input_video.mp4')
+    
     def ydl_hook(d):
         if d['status'] == 'downloading':
             total = d.get('total_bytes') or d.get('total_bytes_estimate') or 0
@@ -71,11 +73,9 @@ def download_with_progress(url, progress_bar, status_text):
                 status_text.text(f"📥 डाउनलोडिंग: {percent}% पूरा हुआ...")
         elif d['status'] == 'finished':
             progress_bar.progress(100)
-            status_text.text("✅ डाउनलोड पूरा हुआ! ऑडियो/वीडियो तैयार...")
+            status_text.text("✅ वीडियो डाउनलोड पूरा हुआ!")
 
-    out_file = os.path.join(TEMP_DIR, 'input_video.mp4')
-    
-    # YouTube Bot Bypass Client Arguments
+    # Multi-client bypass: android_creator -> tv_embedded -> ios
     ydl_opts = {
         'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
         'outtmpl': out_file,
@@ -84,15 +84,16 @@ def download_with_progress(url, progress_bar, status_text):
         'quiet': True,
         'no_warnings': True,
         'nocheckcertificate': True,
+        'geo_bypass': True,
         'extractor_args': {
             'youtube': {
-                'player_client': ['android', 'ios', 'web'],
+                'player_client': ['android_creator', 'tv_embedded', 'android', 'ios'],
                 'player_skip': ['webpage', 'configs']
             }
         },
         'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept-Language': 'en-US,en;q=0.9',
+            'User-Agent': 'com.google.android.youtube/19.09.37 (Linux; U; Android 11) gzip',
+            'Accept': '*/*',
         }
     }
     
@@ -101,7 +102,7 @@ def download_with_progress(url, progress_bar, status_text):
         
     return out_file
 
-# 3. Multi-Character Detection (Male / Female / Villain / Comedian)
+# 3. Voice Pitch & Gender Matching
 def get_character_voice(wav_path, target_lang):
     try:
         rate, data = wavfile.read(wav_path)
@@ -115,13 +116,13 @@ def get_character_voice(wav_path, target_lang):
 
     if target_lang in ["Hindi", "Bhojpuri"]:
         if peak > 175:
-            return "hi-IN-SwaraNeural", "+0Hz", "+0%"      # Female / Heroine
+            return "hi-IN-SwaraNeural", "+0Hz", "+0%"
         elif peak > 135:
-            return "hi-IN-MadhurNeural", "+15Hz", "+5%"    # Comedian / High Pitch
+            return "hi-IN-MadhurNeural", "+15Hz", "+5%"
         elif peak < 100:
-            return "hi-IN-MadhurNeural", "-20Hz", "-5%"    # Villain / Deep Bass
+            return "hi-IN-MadhurNeural", "-20Hz", "-5%"
         else:
-            return "hi-IN-MadhurNeural", "+0Hz", "+0%"      # Hero / Lead Male
+            return "hi-IN-MadhurNeural", "+0Hz", "+0%"
     else:
         if peak > 175:
             return "en-US-JennyNeural", "+0Hz", "+0%"
@@ -132,7 +133,7 @@ async def render_tts_segment(text, voice, pitch, rate, out_path):
     comm = edge_tts.Communicate(text, voice=voice, pitch=pitch, rate=rate)
     await comm.save(out_path)
 
-# 4. Multi-Character AI Dubbing Pipeline (Auto GPU Detection)
+# 4. Multi-Character AI Dubbing Pipeline (GPU Optimized)
 def run_ai_dubbing(video_path, target_lang, progress_bar, status_text):
     status_text.text("🎙️ वोकल्स और डायलॉग्स अलग किए जा रहे हैं...")
     progress_bar.progress(10)
@@ -144,10 +145,9 @@ def run_ai_dubbing(video_path, target_lang, progress_bar, status_text):
         raw_audio
     ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     
-    status_text.text("🧠 AI भाषा पहचान कर ट्रांसक्राइब कर रहा है (Whisper Turbo GPU)...")
+    status_text.text("🧠 AI भाषा पहचान कर ट्रांसक्राइब कर रहा है (Whisper GPU)...")
     progress_bar.progress(30)
     
-    # GPU / CPU Check
     device_mode = "cuda" if torch.cuda.is_available() else "cpu"
     comp_type = "float16" if torch.cuda.is_available() else "int8"
     
@@ -190,12 +190,12 @@ def run_ai_dubbing(video_path, target_lang, progress_bar, status_text):
         
         curr_pct = 30 + int((idx + 1) / total_segs * 50)
         progress_bar.progress(curr_pct)
-        status_text.text(f"🗣️ AI डबिंग प्रोग्रेस: {idx+1}/{total_segs} डायलॉग्स ({target_lang})...")
+        status_text.text(f"🗣️ AI डबिंग: {idx+1}/{total_segs} डायलॉग्स ({target_lang})...")
 
     final_audio = os.path.join(TEMP_DIR, "final_dub.wav")
     dubbed_track.export(final_audio, format="wav")
     
-    status_text.text("🎬 ऑडियो-वीडियो सिंक और री-मर्जिंग चल रही है...")
+    status_text.text("🎬 ऑडियो-वीडियो सिंक और री-मर्जिंग जारी है...")
     progress_bar.progress(85)
     
     dubbed_video = os.path.join(TEMP_DIR, "dubbed_final.mp4")
@@ -207,12 +207,11 @@ def run_ai_dubbing(video_path, target_lang, progress_bar, status_text):
     
     return dubbed_video
 
-# 5. Anti-Copyright Slicer (Video Filters + Audio Remastering)
+# 5. Anti-Copyright Slicer
 def slice_and_anti_copyright(video_path, seconds, progress_bar, status_text):
     status_text.text("🛡️ एंटी-कॉपीराइट फिल्टर और क्लिप स्लाइसिंग जारी है...")
     progress_bar.progress(90)
     
-    # 1.02x Speed, Zoom, Color Grade & 432Hz Sound Retune
     vf = "scale=trunc(iw*1.02/2)*2:trunc(ih*1.02/2)*2,eq=contrast=1.05:brightness=0.02:saturation=1.07,setpts=0.98*PTS"
     af = "atempo=1.02,asetrate=44100*1.01"
     output_pattern = os.path.join(OUTPUT_DIR, "part_%03d.mp4")
@@ -231,14 +230,12 @@ def slice_and_anti_copyright(video_path, seconds, progress_bar, status_text):
     status_text.text("✨ सब कुछ तैयार है!")
     return sorted(glob.glob(os.path.join(OUTPUT_DIR, "part_*.mp4")))
 
-# --- Clean 3-Step UI ---
+# --- Clean Direct UI ---
 st.title("⚡ Universal AI Video Studio")
-st.caption("Auto Link Downloader | Anti-Copyright Bypass | Multi-Character AI Dubbing")
+st.caption("Direct YouTube Downloader | Anti-Copyright Bypass | Multi-Character AI Dubbing")
 
-# 1. Video URL Input
-video_url = st.text_input("1️⃣ वीडियो लिंक पेस्ट करें (YouTube, MovieBox, Picasso, 18+ Sites, Web):", placeholder="https://...")
+video_url = st.text_input("1️⃣ वीडियो लिंक पेस्ट करें (YouTube, MovieBox, Web):", placeholder="https://www.youtube.com/watch?v=...")
 
-# 2. Timer Dropdown
 timers = {
     "50 Seconds": 50,
     "1 Minute": 60,
@@ -254,29 +251,22 @@ timers = {
     "1 Hour": 3600
 }
 selected_time = st.selectbox("2️⃣ क्लिप टाइमर चुनें:", list(timers.keys()), index=7)
-
-# 3. Target Language Dropdown
 selected_lang = st.selectbox("3️⃣ टारगेट भाषा चुनें (Auto Detect & Dub):", ["Original Audio", "Hindi", "English", "Bhojpuri"])
 
-# Process Button
 if st.button("🚀 Process & Generate Clips", use_container_width=True):
     if not video_url:
         st.warning("⚠️ कृपया पहले वीडियो लिंक पेस्ट करें!")
     else:
         cleanup_workspace()
-        
         progress = st.progress(0)
         status = st.empty()
         
         try:
-            # Step A: Download
             base_vid = download_with_progress(video_url, progress, status)
             
-            # Step B: AI Dubbing
             if selected_lang != "Original Audio":
                 base_vid = run_ai_dubbing(base_vid, selected_lang, progress, status)
             
-            # Step C: Anti-Copyright Slicing
             clips = slice_and_anti_copyright(base_vid, timers[selected_time], progress, status)
             
             st.success(f"🎉 प्रोसेस पूरा हुआ! कुल {len(clips)} क्लिप्स तैयार की गईं।")
