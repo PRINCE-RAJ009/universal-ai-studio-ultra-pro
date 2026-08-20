@@ -2,6 +2,8 @@ import os
 import glob
 import subprocess
 import asyncio
+import re
+import requests
 import numpy as np
 from scipy.io import wavfile
 import streamlit as st
@@ -12,7 +14,6 @@ import edge_tts
 from pydub import AudioSegment
 import torch
 
-# 1. Page Configuration & Theme
 st.set_page_config(page_title="Universal Studio AI", layout="centered")
 
 st.markdown("""
@@ -59,23 +60,74 @@ def cleanup_workspace():
             except Exception:
                 pass
 
-# 2. 100% Bulletproof YouTube Stream Downloader
+def extract_youtube_id(url):
+    match = re.search(r'(?:v=|\/|youtu\.be\/|embed\/)([0-9A-Za-z_-]{11})', url)
+    return match.group(1) if match else None
+
+# 100% Colab IP Bypass Downloader Engine
 def download_with_progress(url, progress_bar, status_text):
     out_file = os.path.join(TEMP_DIR, 'input_video.mp4')
+    vid_id = extract_youtube_id(url)
+    
+    # Engine 1: Piped / Invidious Stream Proxy (Bypasses YouTube Colab IP Block completely)
+    if vid_id:
+        status_text.text("⚡ बायपास इंजन से वीडियो स्ट्रीम खोजी जा रही है...")
+        progress_bar.progress(15)
+        
+        piped_instances = [
+            "https://pipedapi.kavin.rocks",
+            "https://api.piped.private.coffee",
+            "https://pipedapi.leptons.xyz"
+        ]
+        
+        for instance in piped_instances:
+            try:
+                res = requests.get(f"{instance}/streams/{vid_id}", timeout=10)
+                if res.status_code == 200:
+                    data = res.json()
+                    streams = data.get("videoStreams", [])
+                    mp4_streams = [s for s in streams if s.get("format") == "MPEG_4" or s.get("mimeType", "").startswith("video/mp4")]
+                    
+                    if mp4_streams:
+                        best_stream = sorted(mp4_streams, key=lambda x: x.get("bitrate", 0), reverse=True)[0]
+                        stream_url = best_stream.get("url")
+                        
+                        if stream_url:
+                            status_text.text("📥 वीडियो डाउनलोड हो रहा है (100% Bot Bypass)...")
+                            with requests.get(stream_url, stream=True, timeout=30) as r:
+                                r.raise_for_status()
+                                total = int(r.headers.get('content-length', 0))
+                                downloaded = 0
+                                with open(out_file, 'wb') as f:
+                                    for chunk in r.iter_content(chunk_size=1024 * 1024):
+                                        if chunk:
+                                            f.write(chunk)
+                                            downloaded += len(chunk)
+                                            if total > 0:
+                                                pct = int(downloaded / total * 80) + 15
+                                                progress_bar.progress(min(pct, 95))
+                            
+                            progress_bar.progress(100)
+                            status_text.text("✅ वीडियो डाउनलोड सफल!")
+                            return out_file
+            except Exception:
+                continue
+
+    # Engine 2: yt-dlp TV Embedded Fallback Engine
+    status_text.text("📥 yt-dlp अल्टरनेटिव इंजन से डाउनलोड जारी है...")
     
     def ydl_hook(d):
         if d['status'] == 'downloading':
             total = d.get('total_bytes') or d.get('total_bytes_estimate') or 0
             downloaded = d.get('downloaded_bytes', 0)
             if total > 0:
-                percent = int(downloaded / total * 100)
-                progress_bar.progress(percent)
-                status_text.text(f"📥 डाउनलोडिंग: {percent}% पूरा हुआ...")
+                pct = int(downloaded / total * 100)
+                progress_bar.progress(pct)
+                status_text.text(f"📥 डाउनलोडिंग: {pct}%...")
         elif d['status'] == 'finished':
             progress_bar.progress(100)
-            status_text.text("✅ वीडियो डाउनलोड पूरा हुआ!")
+            status_text.text("✅ डाउनलोड पूरा हुआ!")
 
-    # Multi-client bypass: android_creator -> tv_embedded -> ios
     ydl_opts = {
         'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
         'outtmpl': out_file,
@@ -84,16 +136,11 @@ def download_with_progress(url, progress_bar, status_text):
         'quiet': True,
         'no_warnings': True,
         'nocheckcertificate': True,
-        'geo_bypass': True,
         'extractor_args': {
             'youtube': {
-                'player_client': ['android_creator', 'tv_embedded', 'android', 'ios'],
+                'player_client': ['tv_embedded', 'mweb', 'android'],
                 'player_skip': ['webpage', 'configs']
             }
-        },
-        'http_headers': {
-            'User-Agent': 'com.google.android.youtube/19.09.37 (Linux; U; Android 11) gzip',
-            'Accept': '*/*',
         }
     }
     
@@ -102,7 +149,6 @@ def download_with_progress(url, progress_bar, status_text):
         
     return out_file
 
-# 3. Voice Pitch & Gender Matching
 def get_character_voice(wav_path, target_lang):
     try:
         rate, data = wavfile.read(wav_path)
@@ -133,7 +179,6 @@ async def render_tts_segment(text, voice, pitch, rate, out_path):
     comm = edge_tts.Communicate(text, voice=voice, pitch=pitch, rate=rate)
     await comm.save(out_path)
 
-# 4. Multi-Character AI Dubbing Pipeline (GPU Optimized)
 def run_ai_dubbing(video_path, target_lang, progress_bar, status_text):
     status_text.text("🎙️ वोकल्स और डायलॉग्स अलग किए जा रहे हैं...")
     progress_bar.progress(10)
@@ -207,7 +252,6 @@ def run_ai_dubbing(video_path, target_lang, progress_bar, status_text):
     
     return dubbed_video
 
-# 5. Anti-Copyright Slicer
 def slice_and_anti_copyright(video_path, seconds, progress_bar, status_text):
     status_text.text("🛡️ एंटी-कॉपीराइट फिल्टर और क्लिप स्लाइसिंग जारी है...")
     progress_bar.progress(90)
@@ -227,14 +271,13 @@ def slice_and_anti_copyright(video_path, seconds, progress_bar, status_text):
     ]
     subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     progress_bar.progress(100)
-    status_text.text("✨ सब कुछ तैयार है!")
+    status_text.text("✨ प्रोसेस पूरी तरह समाप्त!")
     return sorted(glob.glob(os.path.join(OUTPUT_DIR, "part_*.mp4")))
 
-# --- Clean Direct UI ---
 st.title("⚡ Universal AI Video Studio")
 st.caption("Direct YouTube Downloader | Anti-Copyright Bypass | Multi-Character AI Dubbing")
 
-video_url = st.text_input("1️⃣ वीडियो लिंक पेस्ट करें (YouTube, MovieBox, Web):", placeholder="https://www.youtube.com/watch?v=...")
+video_url = st.text_input("1️⃣ वीडियो लिंक पेस्ट करें (YouTube, Web):", placeholder="https://www.youtube.com/watch?v=...")
 
 timers = {
     "50 Seconds": 50,
