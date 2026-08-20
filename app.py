@@ -10,6 +10,7 @@ from deep_translator import GoogleTranslator
 from faster_whisper import WhisperModel
 import edge_tts
 from pydub import AudioSegment
+import torch
 
 # 1. Page Configuration & Black/White Futuristic Theme
 st.set_page_config(page_title="Universal Studio AI", layout="centered")
@@ -58,7 +59,7 @@ def cleanup_workspace():
             except Exception:
                 pass
 
-# 2. Universal Downloader with Live % Tracking
+# 2. Universal Downloader with YouTube Bot-Bypass & Live % Tracking
 def download_with_progress(url, progress_bar, status_text):
     def ydl_hook(d):
         if d['status'] == 'downloading':
@@ -73,16 +74,31 @@ def download_with_progress(url, progress_bar, status_text):
             status_text.text("✅ डाउनलोड पूरा हुआ! ऑडियो/वीडियो तैयार...")
 
     out_file = os.path.join(TEMP_DIR, 'input_video.mp4')
+    
+    # YouTube Bot Bypass Client Arguments
     ydl_opts = {
-        'format': 'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best',
+        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
         'outtmpl': out_file,
         'merge_output_format': 'mp4',
         'progress_hooks': [ydl_hook],
         'quiet': True,
         'no_warnings': True,
+        'nocheckcertificate': True,
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android', 'ios', 'web'],
+                'player_skip': ['webpage', 'configs']
+            }
+        },
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept-Language': 'en-US,en;q=0.9',
+        }
     }
+    
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         ydl.download([url])
+        
     return out_file
 
 # 3. Multi-Character Detection (Male / Female / Villain / Comedian)
@@ -116,7 +132,7 @@ async def render_tts_segment(text, voice, pitch, rate, out_path):
     comm = edge_tts.Communicate(text, voice=voice, pitch=pitch, rate=rate)
     await comm.save(out_path)
 
-# 4. Multi-Character AI Dubbing Pipeline
+# 4. Multi-Character AI Dubbing Pipeline (Auto GPU Detection)
 def run_ai_dubbing(video_path, target_lang, progress_bar, status_text):
     status_text.text("🎙️ वोकल्स और डायलॉग्स अलग किए जा रहे हैं...")
     progress_bar.progress(10)
@@ -128,9 +144,14 @@ def run_ai_dubbing(video_path, target_lang, progress_bar, status_text):
         raw_audio
     ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     
-    status_text.text("🧠 AI भाषा पहचान कर ट्रांसक्राइब कर रहा है (Whisper Tiny)...")
+    status_text.text("🧠 AI भाषा पहचान कर ट्रांसक्राइब कर रहा है (Whisper Turbo GPU)...")
     progress_bar.progress(30)
-    model = WhisperModel("tiny", device="cpu", compute_type="int8", cpu_threads=4)
+    
+    # GPU / CPU Check
+    device_mode = "cuda" if torch.cuda.is_available() else "cpu"
+    comp_type = "float16" if torch.cuda.is_available() else "int8"
+    
+    model = WhisperModel("base", device=device_mode, compute_type=comp_type)
     segments, _ = model.transcribe(raw_audio, beam_size=1)
     
     orig_audio = AudioSegment.from_wav(raw_audio)
@@ -217,7 +238,7 @@ st.caption("Auto Link Downloader | Anti-Copyright Bypass | Multi-Character AI Du
 # 1. Video URL Input
 video_url = st.text_input("1️⃣ वीडियो लिंक पेस्ट करें (YouTube, MovieBox, Picasso, 18+ Sites, Web):", placeholder="https://...")
 
-# 2. Timer Dropdown (Updated with 45 Minutes)
+# 2. Timer Dropdown
 timers = {
     "50 Seconds": 50,
     "1 Minute": 60,
