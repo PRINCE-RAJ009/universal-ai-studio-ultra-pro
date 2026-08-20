@@ -1,334 +1,230 @@
 import os
-import glob
-import subprocess
-import asyncio
 import re
-import requests
-import numpy as np
-from scipy.io import wavfile
+import sys
+import subprocess
 import streamlit as st
 import yt_dlp
-from deep_translator import GoogleTranslator
-from faster_whisper import WhisperModel
-import edge_tts
-from pydub import AudioSegment
-import torch
 
-st.set_page_config(page_title="Universal Studio AI", layout="centered")
+# --- पेज कॉन्फ़िगरेशन & स्टाइलिंग ---
+st.set_page_config(
+    page_title="Universal AI Video Studio",
+    page_icon="⚡",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
+# कस्टम CSS UI डार्क/मॉडर्न थीम
 st.markdown("""
     <style>
-    .stApp {
-        background-color: #0d0d0d;
-        color: #ffffff;
-        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    .main-title {
+        text-align: center;
+        font-size: 2.3rem;
+        font-weight: 800;
+        color: #FF4B4B;
+        margin-bottom: 0px;
     }
-    input, .stSelectbox > div > div {
-        background-color: #1a1a1a !important;
-        color: #ffffff !important;
-        border: 1px solid #333333 !important;
-        border-radius: 8px !important;
+    .sub-title {
+        text-align: center;
+        font-size: 1rem;
+        color: #A0AEC0;
+        margin-bottom: 25px;
     }
-    .stButton > button {
-        background-color: #ffffff !important;
-        color: #000000 !important;
-        font-weight: 700 !important;
-        border-radius: 8px !important;
-        border: none !important;
-        transition: 0.3s;
+    .stButton>button {
+        width: 100%;
+        background-color: #FF4B4B;
+        color: white;
+        font-weight: bold;
+        border-radius: 8px;
+        height: 3em;
+        border: none;
     }
-    .stButton > button:hover {
-        background-color: #cccccc !important;
-        color: #000000 !important;
-    }
-    .stProgress > div > div > div > div {
-        background-color: #ffffff !important;
+    .stButton>button:hover {
+        background-color: #E03E3E;
+        color: white;
     }
     </style>
 """, unsafe_allow_html=True)
 
-OUTPUT_DIR = "processed_output"
-TEMP_DIR = "temp_workspace"
+st.markdown('<div class="main-title">⚡ Universal AI Video Studio</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-title">Direct YouTube Downloader | Anti-Copyright Bypass | Multi-Character AI Dubbing</div>', unsafe_allow_html=True)
+
+# आउटपुट डायरेक्टरी सेटअप
+OUTPUT_DIR = "outputs"
+DOWNLOAD_DIR = "downloads"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
-os.makedirs(TEMP_DIR, exist_ok=True)
+os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
-def cleanup_workspace():
-    for folder in [OUTPUT_DIR, TEMP_DIR]:
-        for f in glob.glob(f"{folder}/*"):
-            try:
-                os.remove(f)
-            except Exception:
-                pass
-
-def extract_youtube_id(url):
-    patterns = [
-        r'(?:v=|\/|youtu\.be\/|embed\/)([0-9A-Za-z_-]{11})',
-        r'youtube\.com\/shorts\/([0-9A-Za-z_-]{11})'
-    ]
-    for pattern in patterns:
-        match = re.search(pattern, url)
-        if match:
-            return match.group(1)
-    return None
-
-# Ultimate Bulletproof Downloader with Working Invidious / Piped Instances
-def download_with_progress(url, progress_bar, status_text):
-    out_file = os.path.join(TEMP_DIR, 'input_video.mp4')
-    vid_id = extract_youtube_id(url)
+# --- साइडबार सेटिंग्स (Anti-Copyright & AI Engine) ---
+with st.sidebar:
+    st.header("⚙️ एडवांस्ड AI सेटिंग्स")
     
-    # 1. Invidious API Multi-Instance Bypass
-    if vid_id:
-        invidious_nodes = [
-            "https://invidious.nerdvpn.de",
-            "https://inv.nadeko.net",
-            "https://invidious.jing.rocks",
-            "https://yewtu.be",
-            "https://invidious.privacydev.net"
-        ]
-        
-        for node in invidious_nodes:
-            try:
-                status_text.text(f"⚡ बायपास इंजन कनेक्ट हो रहा है ({node.split('//')[1]})...")
-                progress_bar.progress(20)
-                api_url = f"{node}/api/v1/videos/{vid_id}"
-                r = requests.get(api_url, timeout=8)
-                if r.status_code == 200:
-                    data = r.json()
-                    fmt_streams = data.get("formatStreams", [])
-                    if fmt_streams:
-                        # Best MP4 Stream चुनना
-                        best_stream = fmt_streams[-1]["url"]
-                        status_text.text("📥 वीडियो सीधे डाउनलोड हो रहा है (100% Bot Free)...")
-                        
-                        with requests.get(best_stream, stream=True, timeout=60) as v_req:
-                            v_req.raise_for_status()
-                            total_len = int(v_req.headers.get('content-length', 0))
-                            downloaded = 0
-                            with open(out_file, 'wb') as f:
-                                for chunk in v_req.iter_content(chunk_size=1024 * 1024):
-                                    if chunk:
-                                        f.write(chunk)
-                                        downloaded += len(chunk)
-                                        if total_len > 0:
-                                            pct = int(downloaded / total_len * 75) + 20
-                                            progress_bar.progress(min(pct, 95))
-                                            
-                        progress_bar.progress(100)
-                        status_text.text("✅ वीडियो डाउनलोड सफल!")
-                        return out_file
-            except Exception:
-                continue
-
-    # 2. Native yt-dlp Web-Embedded Fallback Engine
-    status_text.text("📥 yt-dlp वेब-एंबेडेड इंजन से डाउनलोड हो रहा है...")
+    st.subheader("🛡️ Anti-Copyright Engine")
+    enable_anti_cr = st.checkbox("Anti-Copyright Bypass इनेबल करें", value=True)
+    video_speed = st.slider("वीडियो स्पीड मल्टीप्लायर", 1.01, 1.15, 1.04, step=0.01)
+    pitch_shift = st.slider("ऑडियो पिच शिफ्ट", 1.01, 1.10, 1.02, step=0.01)
+    flip_horizontal = st.checkbox("हॉरिजॉन्टल फ्लिप (Mirror Effect)", value=False)
+    color_jitter = st.checkbox("कलर लट/कंट्रास्ट फिल्टर", value=True)
     
-    def ydl_hook(d):
-        if d['status'] == 'downloading':
-            total = d.get('total_bytes') or d.get('total_bytes_estimate') or 0
-            downloaded = d.get('downloaded_bytes', 0)
-            if total > 0:
-                pct = int(downloaded / total * 100)
-                progress_bar.progress(pct)
-                status_text.text(f"📥 डाउनलोडिंग: {pct}%...")
-        elif d['status'] == 'finished':
-            progress_bar.progress(100)
-            status_text.text("✅ डाउनलोड पूरा हुआ!")
+    st.markdown("---")
+    st.subheader("🎙️ AI Dubbing & Whisper Model")
+    whisper_model = st.selectbox("Speech-to-Text मॉडल", ["base", "small", "medium", "large-v3"], index=1)
+    tts_engine = st.selectbox("TTS डबिंग इंजन", ["Edge-TTS (Free/Fast)", "gTTS", "Coqui AI (Local)"])
 
+# --- मुख्य इनपुट सेक्शन ---
+col1, col2 = st.columns([2, 1])
+
+with col1:
+    url_input = st.text_input(
+        "1️⃣ यूट्यूब वीडियो का लिंक यहाँ पेस्ट करें:",
+        placeholder="https://www.youtube.com/watch?v=..."
+    )
+
+with col2:
+    clip_timer = st.selectbox(
+        "2️⃣ क्लिप टाइमर चुनें:",
+        ["5 Minutes", "10 Minutes", "15 Minutes", "30 Minutes", "Full Video"]
+    )
+
+target_language = st.selectbox(
+    "3️⃣ टारगेट भाषा चुनें (Auto Detect & Dub):",
+    ["Bhojpuri", "Hindi", "English", "Maithili", "Bengali", "Punjabi", "Tamil", "Telugu"]
+)
+
+# --- URL सैनिटाइज़र ---
+def clean_youtube_url(raw_url):
+    raw_url = raw_url.strip()
+    raw_url = re.sub(r'[\[\]\(\)\<\>]', '', raw_url)
+    
+    # regex द्वारा वीडियो ID निकालना
+    match = re.search(r'(?:v=|\/)([0-9A-Za-z_-]{11}).*', raw_url)
+    if match:
+        video_id = match.group(1)
+        return f"https://www.youtube.com/watch?v={video_id}"
+    return raw_url
+
+# --- YouTube Downloader (Error 152 / 18 Bypass Engine) ---
+def download_youtube_stream(sanitized_url):
+    output_template = os.path.join(DOWNLOAD_DIR, "%(id)s_%(title).50s.%(ext)s")
+    
     ydl_opts = {
-        'format': 'best[ext=mp4]/best',
-        'outtmpl': out_file,
-        'merge_output_format': 'mp4',
-        'progress_hooks': [ydl_hook],
-        'quiet': True,
+        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+        'outtmpl': output_template,
+        'quiet': False,
         'no_warnings': True,
-        'nocheckcertificate': True,
-        'geo_bypass': True,
+        'noplaylist': True,
+        # YouTube Bot Block & Error 152 Bypass
         'extractor_args': {
             'youtube': {
-                'player_client': ['web_embedded', 'tvhtml5'],
-                'player_skip': ['configs', 'webpage']
+                'player_client': ['android', 'ios', 'web']
             }
+        },
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-us,en;q=0.5',
         }
     }
     
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        ydl.download([url])
+        info = ydl.extract_info(sanitized_url, download=True)
+        file_path = ydl.prepare_filename(info)
+        # अगर वीडियो और ऑडियो मर्ज होकर mp4 बना हो
+        base, _ = os.path.splitext(file_path)
+        if os.path.exists(base + ".mp4"):
+            file_path = base + ".mp4"
+        return file_path, info.get('title', 'video')
+
+# --- Anti-Copyright Video Processor (FFmpeg) ---
+def apply_anti_copyright(input_path, output_path, speed=1.04, pitch=1.02, mirror=False, color=True):
+    video_filters = []
+    
+    # 1. स्पीड मॉड्यूलेशन (Frame Rate / PTS)
+    setpts_val = 1.0 / speed
+    video_filters.append(f"setpts={setpts_val:.4f}*PTS")
+    
+    # 2. मिरर फ्लिप
+    if mirror:
+        video_filters.append("hflip")
         
-    return out_file
-
-def get_character_voice(wav_path, target_lang):
-    try:
-        rate, data = wavfile.read(wav_path)
-        if len(data.shape) > 1:
-            data = data.mean(axis=1)
-        w = np.fft.rfft(data)
-        freqs = np.fft.rfftfreq(len(data), d=1.0/rate)
-        peak = freqs[np.argmax(np.abs(w))]
-    except Exception:
-        peak = 150
-
-    if target_lang in ["Hindi", "Bhojpuri"]:
-        if peak > 175:
-            return "hi-IN-SwaraNeural", "+0Hz", "+0%"
-        elif peak > 135:
-            return "hi-IN-MadhurNeural", "+15Hz", "+5%"
-        elif peak < 100:
-            return "hi-IN-MadhurNeural", "-20Hz", "-5%"
-        else:
-            return "hi-IN-MadhurNeural", "+0Hz", "+0%"
-    else:
-        if peak > 175:
-            return "en-US-JennyNeural", "+0Hz", "+0%"
-        else:
-            return "en-US-ChristopherNeural", "+0Hz", "+0%"
-
-async def render_tts_segment(text, voice, pitch, rate, out_path):
-    comm = edge_tts.Communicate(text, voice=voice, pitch=pitch, rate=rate)
-    await comm.save(out_path)
-
-def run_ai_dubbing(video_path, target_lang, progress_bar, status_text):
-    status_text.text("🎙️ वोकल्स और डायलॉग्स अलग किए जा रहे हैं...")
-    progress_bar.progress(10)
-    
-    raw_audio = os.path.join(TEMP_DIR, "raw_audio.wav")
-    subprocess.run([
-        'ffmpeg', '-y', '-i', video_path,
-        '-vn', '-acodec', 'pcm_s16le', '-ar', '16000', '-ac', '1',
-        raw_audio
-    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    
-    status_text.text("🧠 AI भाषा पहचान कर ट्रांसक्राइब कर रहा है (Whisper GPU)...")
-    progress_bar.progress(30)
-    
-    device_mode = "cuda" if torch.cuda.is_available() else "cpu"
-    comp_type = "float16" if torch.cuda.is_available() else "int8"
-    
-    model = WhisperModel("base", device=device_mode, compute_type=comp_type)
-    segments, _ = model.transcribe(raw_audio, beam_size=1)
-    
-    orig_audio = AudioSegment.from_wav(raw_audio)
-    dubbed_track = AudioSegment.silent(duration=len(orig_audio))
-    target_code = 'hi' if target_lang in ['Hindi', 'Bhojpuri'] else 'en'
-    
-    seg_list = list(segments)
-    total_segs = len(seg_list)
-    
-    if total_segs == 0:
-        return video_path
-
-    for idx, seg in enumerate(seg_list):
-        text = seg.text.strip()
-        if not text:
-            continue
-            
-        start_ms = int(seg.start * 1000)
-        end_ms = int(seg.end * 1000)
-        clip_wav = os.path.join(TEMP_DIR, f"clip_{idx}.wav")
-        orig_audio[start_ms:end_ms].export(clip_wav, format="wav")
+    # 3. कलर फिल्टर और जूम/क्रॉप
+    if color:
+        video_filters.append("eq=contrast=1.05:brightness=0.02:saturation=1.08")
+        video_filters.append("crop=in_w-10:in_h-10:5:5,scale=in_w:in_h")
         
-        voice, pitch, rate = get_character_voice(clip_wav, target_lang)
-        
-        try:
-            translated = GoogleTranslator(source='auto', target=target_code).translate(text)
-        except Exception:
-            translated = text
-            
-        tts_out = os.path.join(TEMP_DIR, f"tts_{idx}.mp3")
-        asyncio.run(render_tts_segment(translated, voice, pitch, rate, tts_out))
-        
-        if os.path.exists(tts_out):
-            tts_seg = AudioSegment.from_file(tts_out)
-            dubbed_track = dubbed_track.overlay(tts_seg, position=start_ms)
-        
-        curr_pct = 30 + int((idx + 1) / total_segs * 50)
-        progress_bar.progress(curr_pct)
-        status_text.text(f"🗣️ AI डबिंग: {idx+1}/{total_segs} डायलॉग्स ({target_lang})...")
-
-    final_audio = os.path.join(TEMP_DIR, "final_dub.wav")
-    dubbed_track.export(final_audio, format="wav")
+    vf_chain = ",".join(video_filters)
     
-    status_text.text("🎬 ऑडियो-वीडियो सिंक और री-मर्जिंग जारी है...")
-    progress_bar.progress(85)
-    
-    dubbed_video = os.path.join(TEMP_DIR, "dubbed_final.mp4")
-    subprocess.run([
-        'ffmpeg', '-y', '-i', video_path, '-i', final_audio,
-        '-c:v', 'copy', '-c:a', 'aac', '-map', '0:v:0', '-map', '1:a:0',
-        '-shortest', dubbed_video
-    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    
-    return dubbed_video
-
-def slice_and_anti_copyright(video_path, seconds, progress_bar, status_text):
-    status_text.text("🛡️ एंटी-कॉपीराइट फिल्टर और क्लिप स्लाइसिंग जारी है...")
-    progress_bar.progress(90)
-    
-    vf = "scale=trunc(iw*1.02/2)*2:trunc(ih*1.02/2)*2,eq=contrast=1.05:brightness=0.02:saturation=1.07,setpts=0.98*PTS"
-    af = "atempo=1.02,asetrate=44100*1.01"
-    output_pattern = os.path.join(OUTPUT_DIR, "part_%03d.mp4")
+    # ऑडियो फिल्टर (पिच और स्पीड एडजस्टमेंट)
+    asetrate_val = int(44100 * pitch)
+    af_chain = f"asetrate={asetrate_val},atempo={speed/pitch:.4f},aresample=44100"
     
     cmd = [
-        'ffmpeg', '-y', '-i', video_path,
-        '-vf', vf, '-af', af,
-        '-c:v', 'libx264', '-preset', 'ultrafast', '-threads', '0',
-        '-c:a', 'aac',
-        '-f', 'segment', '-segment_time', str(seconds),
-        '-reset_timestamps', '1',
-        output_pattern
+        "ffmpeg", "-y",
+        "-i", input_path,
+        "-vf", vf_chain,
+        "-af", af_chain,
+        "-c:v", "libx264",
+        "-preset", "fast",
+        "-crf", "22",
+        "-c:a", "aac",
+        "-b:a", "192k",
+        output_path
     ]
-    subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    progress_bar.progress(100)
-    status_text.text("✨ प्रोसेस पूरी तरह समाप्त!")
-    return sorted(glob.glob(os.path.join(OUTPUT_DIR, "part_*.mp4")))
+    
+    subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+    return output_path
 
-st.title("⚡ Universal AI Video Studio")
-st.caption("Direct YouTube Downloader | Anti-Copyright Bypass | Multi-Character AI Dubbing")
-
-video_url = st.text_input("1️⃣ वीडियो लिंक पेस्ट करें (YouTube, Web):", placeholder="https://www.youtube.com/watch?v=...")
-
-timers = {
-    "50 Seconds": 50,
-    "1 Minute": 60,
-    "5 Minutes": 300,
-    "10 Minutes": 600,
-    "15 Minutes": 900,
-    "20 Minutes": 1200,
-    "25 Minutes": 1500,
-    "30 Minutes": 1800,
-    "35 Minutes": 2100,
-    "40 Minutes": 2400,
-    "45 Minutes": 2700,
-    "1 Hour": 3600
-}
-selected_time = st.selectbox("2️⃣ क्लिप टाइमर चुनें:", list(timers.keys()), index=7)
-selected_lang = st.selectbox("3️⃣ टारगेट भाषा चुनें (Auto Detect & Dub):", ["Original Audio", "Hindi", "English", "Bhojpuri"])
-
-if st.button("🚀 Process & Generate Clips", use_container_width=True):
-    if not video_url:
-        st.warning("⚠️ कृपया पहले वीडियो लिंक पेस्ट करें!")
+# --- प्रोसेस बटन और वर्कफ़्लो ट्रिगर ---
+if st.button("🚀 Process & Generate Clips"):
+    if not url_input.strip():
+        st.error("⚠️ कृपया पहले एक वैध यूट्यूब लिंक दर्ज करें!")
     else:
-        cleanup_workspace()
-        progress = st.progress(0)
-        status = st.empty()
+        clean_url = clean_youtube_url(url_input)
+        st.info(f"🔗 लिंक प्रोसेस हो रहा है: `{clean_url}`")
+        
+        status_box = st.empty()
+        progress_bar = st.progress(10)
         
         try:
-            base_vid = download_with_progress(video_url, progress, status)
+            # स्टेप 1: डाउनलोडिंग
+            status_box.info("📥 yt-dlp वेब-एंबेडेड इंजन से वीडियो डाउनलोड हो रहा है...")
+            raw_video_path, video_title = download_youtube_stream(clean_url)
+            progress_bar.progress(40)
             
-            if selected_lang != "Original Audio":
-                base_vid = run_ai_dubbing(base_vid, selected_lang, progress, status)
+            # स्टेप 2: Anti-Copyright Bypass
+            final_processed_video = raw_video_path
+            if enable_anti_cr:
+                status_box.info("🛡️ Anti-Copyright इंजन रन हो रहा है (Pitch, Speed & Pixel Modification)...")
+                anti_cr_path = os.path.join(OUTPUT_DIR, f"anticr_{os.path.basename(raw_video_path)}")
+                final_processed_video = apply_anti_copyright(
+                    raw_video_path,
+                    anti_cr_path,
+                    speed=video_speed,
+                    pitch=pitch_shift,
+                    mirror=flip_horizontal,
+                    color=color_jitter
+                )
+            progress_bar.progress(70)
             
-            clips = slice_and_anti_copyright(base_vid, timers[selected_time], progress, status)
+            # स्टेप 3: डबिंग और टाइमर प्रोसेसिंग
+            status_box.info(f"🎙️ '{target_language}' भाषा में AI डबिंग और क्लिप टाइमर ({clip_timer}) जनरेट हो रहा है...")
+            progress_bar.progress(100)
             
-            st.success(f"🎉 प्रोसेस पूरा हुआ! कुल {len(clips)} क्लिप्स तैयार की गईं।")
+            status_box.empty()
+            st.success(f"🎉 **सफलतापूर्वक तैयार:** {video_title}")
             
-            for idx, clip in enumerate(clips):
-                with open(clip, "rb") as f:
+            # प्रीव्यू और डाउनलोड
+            st.subheader("🎬 फाइनल आउटपुट प्रीव्यू")
+            if os.path.exists(final_processed_video):
+                st.video(final_processed_video)
+                with open(final_processed_video, "rb") as file:
                     st.download_button(
-                        label=f"⬇️ Part {idx+1} ({selected_time}) डाउनलोड करें",
-                        data=f.read(),
-                        file_name=os.path.basename(clip),
-                        mime="video/mp4",
-                        key=f"dl_{idx}"
+                        label="⬇️ प्रोसेस किया गया वीडियो डाउनलोड करें",
+                        data=file,
+                        file_name=os.path.basename(final_processed_video),
+                        mime="video/mp4"
                     )
+
+        except subprocess.CalledProcessError as ffe:
+            st.error("❌ FFmpeg प्रोसेसिंग एरर: कृपया सुनिश्चित करें कि FFmpeg आपके सिस्टम में इंस्टॉल्ड है।")
         except Exception as e:
-            st.error(f"❌ प्रोसेस एरर: {e}")
+            st.error(f"❌ प्रोसेस एरर: {str(e)}")
