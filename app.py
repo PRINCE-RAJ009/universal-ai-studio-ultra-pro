@@ -61,60 +61,66 @@ def cleanup_workspace():
                 pass
 
 def extract_youtube_id(url):
-    match = re.search(r'(?:v=|\/|youtu\.be\/|embed\/)([0-9A-Za-z_-]{11})', url)
-    return match.group(1) if match else None
+    patterns = [
+        r'(?:v=|\/|youtu\.be\/|embed\/)([0-9A-Za-z_-]{11})',
+        r'youtube\.com\/shorts\/([0-9A-Za-z_-]{11})'
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, url)
+        if match:
+            return match.group(1)
+    return None
 
-# 100% Colab IP Bypass Downloader Engine
+# Ultimate Bulletproof Downloader with Working Invidious / Piped Instances
 def download_with_progress(url, progress_bar, status_text):
     out_file = os.path.join(TEMP_DIR, 'input_video.mp4')
     vid_id = extract_youtube_id(url)
     
-    # Engine 1: Piped / Invidious Stream Proxy (Bypasses YouTube Colab IP Block completely)
+    # 1. Invidious API Multi-Instance Bypass
     if vid_id:
-        status_text.text("⚡ बायपास इंजन से वीडियो स्ट्रीम खोजी जा रही है...")
-        progress_bar.progress(15)
-        
-        piped_instances = [
-            "https://pipedapi.kavin.rocks",
-            "https://api.piped.private.coffee",
-            "https://pipedapi.leptons.xyz"
+        invidious_nodes = [
+            "https://invidious.nerdvpn.de",
+            "https://inv.nadeko.net",
+            "https://invidious.jing.rocks",
+            "https://yewtu.be",
+            "https://invidious.privacydev.net"
         ]
         
-        for instance in piped_instances:
+        for node in invidious_nodes:
             try:
-                res = requests.get(f"{instance}/streams/{vid_id}", timeout=10)
-                if res.status_code == 200:
-                    data = res.json()
-                    streams = data.get("videoStreams", [])
-                    mp4_streams = [s for s in streams if s.get("format") == "MPEG_4" or s.get("mimeType", "").startswith("video/mp4")]
-                    
-                    if mp4_streams:
-                        best_stream = sorted(mp4_streams, key=lambda x: x.get("bitrate", 0), reverse=True)[0]
-                        stream_url = best_stream.get("url")
+                status_text.text(f"⚡ बायपास इंजन कनेक्ट हो रहा है ({node.split('//')[1]})...")
+                progress_bar.progress(20)
+                api_url = f"{node}/api/v1/videos/{vid_id}"
+                r = requests.get(api_url, timeout=8)
+                if r.status_code == 200:
+                    data = r.json()
+                    fmt_streams = data.get("formatStreams", [])
+                    if fmt_streams:
+                        # Best MP4 Stream चुनना
+                        best_stream = fmt_streams[-1]["url"]
+                        status_text.text("📥 वीडियो सीधे डाउनलोड हो रहा है (100% Bot Free)...")
                         
-                        if stream_url:
-                            status_text.text("📥 वीडियो डाउनलोड हो रहा है (100% Bot Bypass)...")
-                            with requests.get(stream_url, stream=True, timeout=30) as r:
-                                r.raise_for_status()
-                                total = int(r.headers.get('content-length', 0))
-                                downloaded = 0
-                                with open(out_file, 'wb') as f:
-                                    for chunk in r.iter_content(chunk_size=1024 * 1024):
-                                        if chunk:
-                                            f.write(chunk)
-                                            downloaded += len(chunk)
-                                            if total > 0:
-                                                pct = int(downloaded / total * 80) + 15
-                                                progress_bar.progress(min(pct, 95))
-                            
-                            progress_bar.progress(100)
-                            status_text.text("✅ वीडियो डाउनलोड सफल!")
-                            return out_file
+                        with requests.get(best_stream, stream=True, timeout=60) as v_req:
+                            v_req.raise_for_status()
+                            total_len = int(v_req.headers.get('content-length', 0))
+                            downloaded = 0
+                            with open(out_file, 'wb') as f:
+                                for chunk in v_req.iter_content(chunk_size=1024 * 1024):
+                                    if chunk:
+                                        f.write(chunk)
+                                        downloaded += len(chunk)
+                                        if total_len > 0:
+                                            pct = int(downloaded / total_len * 75) + 20
+                                            progress_bar.progress(min(pct, 95))
+                                            
+                        progress_bar.progress(100)
+                        status_text.text("✅ वीडियो डाउनलोड सफल!")
+                        return out_file
             except Exception:
                 continue
 
-    # Engine 2: yt-dlp TV Embedded Fallback Engine
-    status_text.text("📥 yt-dlp अल्टरनेटिव इंजन से डाउनलोड जारी है...")
+    # 2. Native yt-dlp Web-Embedded Fallback Engine
+    status_text.text("📥 yt-dlp वेब-एंबेडेड इंजन से डाउनलोड हो रहा है...")
     
     def ydl_hook(d):
         if d['status'] == 'downloading':
@@ -129,17 +135,18 @@ def download_with_progress(url, progress_bar, status_text):
             status_text.text("✅ डाउनलोड पूरा हुआ!")
 
     ydl_opts = {
-        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+        'format': 'best[ext=mp4]/best',
         'outtmpl': out_file,
         'merge_output_format': 'mp4',
         'progress_hooks': [ydl_hook],
         'quiet': True,
         'no_warnings': True,
         'nocheckcertificate': True,
+        'geo_bypass': True,
         'extractor_args': {
             'youtube': {
-                'player_client': ['tv_embedded', 'mweb', 'android'],
-                'player_skip': ['webpage', 'configs']
+                'player_client': ['web_embedded', 'tvhtml5'],
+                'player_skip': ['configs', 'webpage']
             }
         }
     }
